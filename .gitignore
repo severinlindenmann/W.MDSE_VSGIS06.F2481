@@ -3,6 +3,17 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# GIS data
+*.shp
+*.shx
+*.dbf
+*.prj
+*.sbn
+*.sbx
+*.shp.xml
+*.cpg
+*.qpj
+
 # C extensions
 *.so
 
