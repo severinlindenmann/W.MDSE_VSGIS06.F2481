@@ -28,8 +28,8 @@ h4 {
 
 st.markdown(title_alignment, unsafe_allow_html=True)
 
-if 'location' not in st.session_state:
-    st.session_state['location'] = {"lat": 47.05048, "lng": 8.30635}
+if "location" not in st.session_state:
+    st.session_state["location"] = {"lat": 47.05048, "lng": 8.30635}
 
 if "last_clicked" not in st.session_state:
     st.session_state["last_clicked"] = None
@@ -48,6 +48,7 @@ st.sidebar.info(
 
 st.sidebar.divider()
 
+
 def create_feature_collection(data):
     feature_collection = {"type": "FeatureCollection", "features": []}
     for idx, row in data.iterrows():
@@ -65,21 +66,24 @@ def create_feature_collection(data):
 
 # load data and transform
 
+
 @st.cache_data
 def load_data():
-    return sharedmobility("unique_stations", inside_city=True),  sharedmobility("city_boundary")
+    df_unique_stations = sharedmobility("unique_stations", inside_city=True)
+    gdf_city_boundary = sharedmobility("city_boundary")
+    df_unique_stations["geometry"] = [
+        Point(lon, lat)
+        for lon, lat in zip(df_unique_stations["lon"], df_unique_stations["lat"])
+    ]
 
-df_unique_stations, gdf_city_boundary = load_data()
+    gdf_unique_stations = gpd.GeoDataFrame(df_unique_stations, geometry="geometry")
+    gdf_unique_stations = gdf_unique_stations.set_crs(crs="EPSG:4326")
+    gdf_city_boundary = gdf_city_boundary.to_crs(epsg=32633)
+    return gdf_unique_stations, gdf_city_boundary
 
-df_unique_stations["geometry"] = [
-    Point(lon, lat)
-    for lon, lat in zip(df_unique_stations["lon"], df_unique_stations["lat"])
-]
 
-gdf_unique_stations = gpd.GeoDataFrame(df_unique_stations, geometry="geometry")
-gdf_unique_stations = gdf_unique_stations.set_crs(epsg=4326)
+gdf_unique_stations, gdf_city_boundary = load_data()
 
-gdf_city_boundary = gdf_city_boundary.to_crs(epsg=32633)
 
 st.title("Nextbike Stationen in Luzern - Karte")
 
@@ -131,7 +135,6 @@ if "Station-Umkreis" in selected:
     gdf_projected["geometry"] = gdf_projected.intersection(
         gdf_city_boundary.geometry.iloc[0]
     )
-    # gdf_city_boundary["geometry"]
 
     merged_geometry = gdf_projected["geometry"].unary_union
     total_area = round(merged_geometry.area / 10**6, 2)
@@ -156,31 +159,48 @@ if "Station-Umkreis" in selected:
 
 if "Nächster-Standort" in selected:
     st.sidebar.markdown("### Nächster-Standort")
-    st.sidebar.write("Wähle ein Standort auf der Karte oder lasse deinen Standort verwenden")
+    st.sidebar.write(
+        "Wähle ein Standort auf der Karte oder lasse deinen Standort verwenden"
+    )
     if st.sidebar.checkbox("Mein Standort verwenden"):
         loc = get_geolocation()
         if loc:
-            st.session_state['location'] = {"lat": loc['coords']['latitude'], "lng": loc['coords']['longitude']}
-        loc = st.session_state['location']
-    elif st.session_state['last_clicked'] is not None:
-        st.session_state['location'] = st.session_state['last_clicked']
-        loc = st.session_state['location']
+            st.session_state["location"] = {
+                "lat": loc["coords"]["latitude"],
+                "lng": loc["coords"]["longitude"],
+            }
+        loc = st.session_state["location"]
+    elif st.session_state["last_clicked"] is not None:
+        st.session_state["location"] = st.session_state["last_clicked"]
+        loc = st.session_state["location"]
     else:
-        loc = st.session_state['location']
- 
-    lon, lat = loc['lng'], loc['lat']
-    st.sidebar.write("Dein ausgewählter Standort:")
-    st.sidebar.markdown(f"Latitude: {lat} <br> Longitude: {lon}", unsafe_allow_html=True)
+        loc = st.session_state["location"]
 
-    # add location to map
+    lon, lat = loc["lng"], loc["lat"]
+    st.sidebar.write("Dein ausgewählter Standort:")
+    st.sidebar.markdown(
+        f"Latitude: {lat} <br> Longitude: {lon}", unsafe_allow_html=True
+    )
+
+    # add location to map
     folium.Marker(
         location=[lat, lon],
         popup="Dein Standort",
         icon=folium.Icon(color="green"),
     ).add_to(m)
 
-    # add nearest 3 stations to map
-    gdf_unique_stations["distance"] = gdf_unique_stations.distance(Point(lon, lat))
+    # Create a GeoDataFrame for the point in the original CRS
+    point_gdf = gpd.GeoDataFrame(
+        [{"id": 1, "geometry": Point(lon, lat)}], crs="EPSG:4326"
+    )
+
+    # Convert the point GeoDataFrame to the same projected CRS as gdf_unique_stations
+    point_gdf = point_gdf.to_crs(epsg=2056)
+    gdf_unique_stations = gdf_unique_stations.to_crs(epsg=2056)
+    gdf_unique_stations["distance"] = gdf_unique_stations.distance(
+        point_gdf.iloc[0].geometry
+    )
+
     gdf_unique_stations = gdf_unique_stations.sort_values("distance")
     gdf_unique_stations = gdf_unique_stations.head(3)
 
@@ -192,20 +212,26 @@ if "Nächster-Standort" in selected:
         ).add_to(m)
 
 
-# call to render Folium map in Streamlit      
+# call to render Folium map in Streamlit
 center = None
 if st.session_state["location"]:
     center = st.session_state["location"]
-map_data = st_folium(m, center=center, use_container_width=True, returned_objects=["last_clicked"], key="map")
+map_data = st_folium(
+    m,
+    center=center,
+    use_container_width=True,
+    returned_objects=["last_clicked"],
+    key="map",
+)
 
 # check if map was clicked
 if "Nächster-Standort" in selected:
     if (
         map_data["last_clicked"]
-        and map_data["last_clicked"] != st.session_state["last_clicked"]):
+        and map_data["last_clicked"] != st.session_state["last_clicked"]
+    ):
         st.session_state["last_clicked"] = map_data["last_clicked"]
         st.experimental_rerun()
-
 
 
 st.sidebar.markdown(
