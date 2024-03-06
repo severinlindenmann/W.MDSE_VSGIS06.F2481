@@ -2,8 +2,13 @@
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Custom ignores
 *service_key.json
-cache
+cache/
+geodata/
+*.geojsonl
+*.json
 
 # GIS data
 *.shp
