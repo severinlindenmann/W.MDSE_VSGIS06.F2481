@@ -72,3 +72,79 @@ def bigquery_city_boundary():
     """
 
     return query_bigquery_return_gdf(sql)
+
+def bigquery_districts_and_stations(timefilter=datetime.now().strftime("%Y-%m-%d")):
+    sql = f"""
+WITH DistinctStations AS (
+  SELECT
+    DISTINCT station_id,
+    lat,
+    lon
+  FROM
+    `seli-data-storage.data_storage_1.station_information`
+  WHERE
+    TIMESTAMP_TRUNC(crawl_time, DAY) = TIMESTAMP("{timefilter}")
+    AND station_id LIKE '%nextbike%'
+),
+StationPoints AS (
+  SELECT
+    station_id,
+    ST_GEOGPOINT(lon, lat) AS station_point
+  FROM
+    DistinctStations
+),
+DistrictsWithCounts AS (
+  SELECT
+    d.name AS district_name,
+    COUNT(s.station_id) AS station_count
+  FROM
+    `seli-data-storage.data_storage_1.districts` d
+  LEFT JOIN
+    StationPoints s
+  ON
+    ST_WITHIN(s.station_point, d.geometry)
+  GROUP BY
+    d.name
+),
+FinalResults AS (
+  SELECT
+    dc.district_name,
+    dc.station_count,
+    d.geometry
+  FROM
+    DistrictsWithCounts dc
+  JOIN
+    `seli-data-storage.data_storage_1.districts` d ON dc.district_name = d.name
+)
+
+SELECT
+  district_name,
+  station_count,
+  geometry
+FROM
+  FinalResults
+
+    """
+
+    return query_bigquery_return_gdf(sql)
+
+def bigquery_rivers():
+    sql = f"""
+    WITH Canton AS (
+  SELECT 
+    geometry 
+  FROM 
+    `seli-data-storage.data_storage_1.canton`
+)
+
+SELECT
+  r.*
+FROM
+  `seli-data-storage.data_storage_1.geo_rivers` r,
+  Canton c
+WHERE
+  ST_INTERSECTS(ST_STARTPOINT(r.geometry), c.geometry)
+  OR ST_INTERSECTS(ST_ENDPOINT(r.geometry), c.geometry)
+"""
+
+    return query_bigquery_return_gdf(sql)
