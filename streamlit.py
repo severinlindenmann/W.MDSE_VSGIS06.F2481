@@ -48,8 +48,18 @@ st.sidebar.info(
 
 st.sidebar.divider()
 
+# load data and transform
+EPSG_GLOBAL = "EPSG:4326"
+EPSG_SWISS = "EPSG:21781"
+
+def convert_to_swiss_crs(gdf):
+    return gdf.to_crs(crs=EPSG_SWISS)
+
+def convert_to_global_crs(gdf):
+    return gdf.to_crs(crs=EPSG_GLOBAL)
 
 def create_feature_collection(data):
+    data = convert_to_global_crs(data)
     feature_collection = {"type": "FeatureCollection", "features": []}
     for idx, row in data.iterrows():
         feature = {
@@ -63,22 +73,23 @@ def create_feature_collection(data):
 
     return feature_collection
 
-
-# load data and transform
-
-
 @st.cache_data
 def load_data():
-    df_unique_stations = sharedmobility("unique_stations", inside_city=True)
     gdf_city_boundary = sharedmobility("city_boundary")
+    gdf_city_boundary = gdf_city_boundary.set_crs(crs=EPSG_GLOBAL)
+
+    df_unique_stations = sharedmobility("unique_stations", inside_city=True)
     df_unique_stations["geometry"] = [
         Point(lon, lat)
         for lon, lat in zip(df_unique_stations["lon"], df_unique_stations["lat"])
     ]
-
     gdf_unique_stations = gpd.GeoDataFrame(df_unique_stations, geometry="geometry")
-    gdf_unique_stations = gdf_unique_stations.set_crs(crs="EPSG:4326")
-    gdf_city_boundary = gdf_city_boundary.to_crs(epsg=32633)
+    gdf_unique_stations = gdf_unique_stations.set_crs(crs=EPSG_GLOBAL)
+
+    gdf_city_boundary = convert_to_swiss_crs(gdf_city_boundary)
+    gdf_unique_stations = convert_to_swiss_crs(gdf_unique_stations)
+    
+    
     return gdf_unique_stations, gdf_city_boundary
 
 
@@ -99,8 +110,9 @@ with col1:
     st.metric("Anzahl Stationen", gdf_unique_stations.shape[0])
 
 with col2:
+
     gdf_city_boundary["area"] = gdf_city_boundary["geometry"].area
-    square_kilometers = round(gdf_city_boundary["area"].iloc[0] / 10**6, 2)
+    square_kilometers = round(gdf_city_boundary["area"].iloc[0] / 10 ** 6, 2)
     st.metric("Stadtgrösse (in km^2)", square_kilometers)
 
 # create starting map
@@ -108,7 +120,7 @@ m = folium.Map(location=[47.05048, 8.30635], zoom_start=15)
 
 if "Stadtgrenze" in selected:
     feature_collection = gpd.GeoSeries(
-        gdf_city_boundary.to_crs(epsg=4326)["geometry"]
+        gdf_city_boundary.to_crs(crs=EPSG_GLOBAL)["geometry"]
     ).__geo_interface__
     folium.GeoJson(feature_collection).add_to(m)
 
@@ -126,10 +138,8 @@ if "Station-Umkreis" in selected:
     )
 
     # add unique stations in circles
-    gdf_projected = gdf_unique_stations.to_crs(epsg=32633)
-    gdf_projected["geometry"] = gdf_projected.geometry.buffer(slider_value)
-    gdf_circles = gdf_projected.to_crs(epsg=4326)
-    # folium.GeoJson(create_feature_collection(gdf_circles)).add_to(m)
+    gdf_projected = gdf_unique_stations
+    gdf_unique_stations["geometry"] = gdf_projected.geometry.buffer(slider_value)
 
     # check that circle is within city boundary, else clip it to boundary
     gdf_projected["geometry"] = gdf_projected.intersection(
@@ -145,8 +155,9 @@ if "Station-Umkreis" in selected:
 
     st.sidebar.divider()
 
-    merged_gdf = gpd.GeoDataFrame(geometry=[merged_geometry], crs=gdf_projected.crs)
-    merged_geojson = merged_gdf.to_crs(epsg=4326).__geo_interface__
+    merged_gdf = gpd.GeoDataFrame(geometry=[merged_geometry])
+    merged_gdf.set_crs(crs=EPSG_SWISS, inplace=True)
+    merged_geojson = convert_to_global_crs(merged_gdf).__geo_interface__
     folium.GeoJson(
         merged_geojson,
         style_function=lambda feature: {
@@ -191,18 +202,22 @@ if "Nächster-Standort" in selected:
 
     # Create a GeoDataFrame for the point in the original CRS
     point_gdf = gpd.GeoDataFrame(
-        [{"id": 1, "geometry": Point(lon, lat)}], crs="EPSG:4326"
+        [{"id": 1, "geometry": Point(lon, lat)}]
     )
 
-    # Convert the point GeoDataFrame to the same projected CRS as gdf_unique_stations
-    point_gdf = point_gdf.to_crs(epsg=2056)
-    gdf_unique_stations = gdf_unique_stations.to_crs(epsg=2056)
+    point_gdf = point_gdf.set_crs(crs=EPSG_GLOBAL)
+    point_gdf = convert_to_swiss_crs(point_gdf)
+
+    # point_gdf = point_gdf.to_crs(epsg=2056)
+    # gdf_unique_stations = gdf_unique_stations.to_crs(epsg=2056)
+    gdf_unique_stations = convert_to_swiss_crs(gdf_unique_stations)
     gdf_unique_stations["distance"] = gdf_unique_stations.distance(
         point_gdf.iloc[0].geometry
     )
 
     gdf_unique_stations = gdf_unique_stations.sort_values("distance")
     gdf_unique_stations = gdf_unique_stations.head(3)
+    gdf_unique_stations = convert_to_global_crs(gdf_unique_stations)
 
     for idx, row in gdf_unique_stations.iterrows():
         folium.Marker(
