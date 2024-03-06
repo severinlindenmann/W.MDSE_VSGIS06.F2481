@@ -4,7 +4,6 @@ from streamlit_folium import st_folium
 import folium
 import geopandas as gpd
 from shapely.geometry import Point, mapping
-import json
 
 st.set_page_config(
     page_title="Nextbike | Stadt Luzern",
@@ -37,7 +36,7 @@ st.sidebar.markdown(
 )
 
 st.sidebar.info(
-    "Die Analyse wurde mit öffentlich Zugänglichen Daten durchgeführt. Die Quellen dafür sind ganz unten aufgeführt."
+    "Die Analyse wurde mit öffentlich Zugänglichen Daten durchgeführt. Die Quellen dafür sind unten aufgeführt. Weiter Infos findest du im Github Projekt [Github](https://github.com/severinlindenmann/W.MDSE_VSGIS06.F2481)"
 )
 
 
@@ -147,11 +146,17 @@ st.write(st_data)
 
 st.sidebar.markdown(
     """
+
+   
+### Eingesetzte Tools
+- [Streamlit](https://www.streamlit.io/)
+- [Folium](https://python-visualization.github.io/folium/)
+- [Google BigQuery](https://cloud.google.com/bigquery)
+
 ### Quellen
-- [Nextbike](https://www.nextbike.de/de/)
-- [Open Data Luzern](https://data.stadt-luzern.ch/)
-- [Open Weather](https://open-meteo.com/)
-- [Veloverkehr](https://www.veloverkehr.ch/)
-- [Google Maps](https://cloud.google.com/maps-platform)
+- [Nextbike](https://www.nextbike.de/)
+- [Shared Mobility](https://github.com/SFOE/sharedmobility)
+- [Bevölkerung Luzern](https://www.lustat.ch/)
+- [Openstreetmap](https://www.openstreetmap.org/)
 """
 )
