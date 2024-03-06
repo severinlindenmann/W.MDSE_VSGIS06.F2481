@@ -4,12 +4,7 @@ from data.sharedmobility import (
     query_bigquery_return_df,
     bigquery_city_boundary,
 )
-from joblib import Memory
 
-# Create a Memory object with the specified cache directory to store the cached data
-memory = Memory("cache", verbose=0)
-
-# @memory.cache
 def sharedmobility(type="unique_stations", inside_city=False, custom_sql=None):
     """
     Shared mobility data for the region of Luzern.

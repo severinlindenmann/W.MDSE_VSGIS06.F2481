@@ -4,7 +4,7 @@ from streamlit_folium import st_folium
 import folium
 import geopandas as gpd
 from shapely.geometry import Point, mapping
-from streamlit_js_eval import get_geolocation, streamlit_js_eval
+from streamlit_js_eval import get_geolocation
 
 st.set_page_config(
     page_title="Nextbike | Stadt Luzern",
@@ -64,14 +64,21 @@ def create_feature_collection(data):
 
 
 # load data and transform
-df_unique_stations = sharedmobility("unique_stations", inside_city=True)
+
+@st.cache_data
+def load_data():
+    return sharedmobility("unique_stations", inside_city=True),  sharedmobility("city_boundary")
+
+df_unique_stations, gdf_city_boundary = load_data()
+
 df_unique_stations["geometry"] = [
     Point(lon, lat)
     for lon, lat in zip(df_unique_stations["lon"], df_unique_stations["lat"])
 ]
+
 gdf_unique_stations = gpd.GeoDataFrame(df_unique_stations, geometry="geometry")
 gdf_unique_stations = gdf_unique_stations.set_crs(epsg=4326)
-gdf_city_boundary = sharedmobility("city_boundary")
+
 gdf_city_boundary = gdf_city_boundary.to_crs(epsg=32633)
 
 st.title("Nextbike Stationen in Luzern - Karte")
