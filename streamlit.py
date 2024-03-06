@@ -4,6 +4,7 @@ from streamlit_folium import st_folium
 import folium
 import geopandas as gpd
 from shapely.geometry import Point, mapping
+from streamlit_js_eval import get_geolocation, streamlit_js_eval
 
 st.set_page_config(
     page_title="Nextbike | Stadt Luzern",
@@ -27,6 +28,12 @@ h4 {
 
 st.markdown(title_alignment, unsafe_allow_html=True)
 
+if 'location' not in st.session_state:
+    st.session_state['location'] = {"lat": 47.05048, "lng": 8.30635}
+
+if "last_clicked" not in st.session_state:
+    st.session_state["last_clicked"] = None
+
 st.sidebar.markdown(
     """
 # Analyse von Nextbike Daten in der Stadt Luzern
@@ -39,6 +46,7 @@ st.sidebar.info(
     "Die Analyse wurde mit öffentlich Zugänglichen Daten durchgeführt. Die Quellen dafür sind unten aufgeführt. Weiter Infos findest du im Github Projekt [Github](https://github.com/severinlindenmann/W.MDSE_VSGIS06.F2481)"
 )
 
+st.sidebar.divider()
 
 def create_feature_collection(data):
     feature_collection = {"type": "FeatureCollection", "features": []}
@@ -70,8 +78,8 @@ st.title("Nextbike Stationen in Luzern - Karte")
 
 selected = st.multiselect(
     "Wähle die Funktionen aus, die du veewnden möchtest aus der Liste aus, um die Karte zu personalisieren:",
-    ["Stadtgrenze", "Stationen", "Station-Umkreis"],
-    default=["Stadtgrenze", "Station-Umkreis"],
+    ["Stadtgrenze", "Stationen", "Station-Umkreis", "Nächster-Standort"],
+    default=["Nächster-Standort"],
 )
 
 col1, col2, col3, col4 = st.columns(4)
@@ -101,7 +109,6 @@ if "Stationen" in selected:
     )
 
 if "Station-Umkreis" in selected:
-    st.sidebar.divider()
     st.sidebar.markdown("### Station-Umkreis")
     slider_value = st.sidebar.slider(
         "Radius in Metern", min_value=100, max_value=500, value=100, step=100
@@ -140,9 +147,59 @@ if "Station-Umkreis" in selected:
         },
     ).add_to(m)
 
-# call to render Folium map in Streamlit
-st_data = st_folium(m, use_container_width=True)
-st.write(st_data)
+if "Nächster-Standort" in selected:
+    st.sidebar.markdown("### Nächster-Standort")
+    st.sidebar.write("Wähle ein Standort auf der Karte oder lasse deinen Standort verwenden")
+    if st.sidebar.checkbox("Mein Standort verwenden"):
+        loc = get_geolocation()
+        if loc:
+            st.session_state['location'] = {"lat": loc['coords']['latitude'], "lng": loc['coords']['longitude']}
+        loc = st.session_state['location']
+    elif st.session_state['last_clicked'] is not None:
+        st.session_state['location'] = st.session_state['last_clicked']
+        loc = st.session_state['location']
+    else:
+        loc = st.session_state['location']
+ 
+    lon, lat = loc['lng'], loc['lat']
+    st.sidebar.write("Dein ausgewählter Standort:")
+    st.sidebar.markdown(f"Latitude: {lat} <br> Longitude: {lon}", unsafe_allow_html=True)
+
+    # add location to map
+    folium.Marker(
+        location=[lat, lon],
+        popup="Dein Standort",
+        icon=folium.Icon(color="green"),
+    ).add_to(m)
+
+    # add nearest 3 stations to map
+    gdf_unique_stations["distance"] = gdf_unique_stations.distance(Point(lon, lat))
+    gdf_unique_stations = gdf_unique_stations.sort_values("distance")
+    gdf_unique_stations = gdf_unique_stations.head(3)
+
+    for idx, row in gdf_unique_stations.iterrows():
+        folium.Marker(
+            location=[row["lat"], row["lon"]],
+            popup=row["name"],
+            icon=folium.Icon(color="red"),
+        ).add_to(m)
+
+
+# call to render Folium map in Streamlit      
+center = None
+if st.session_state["location"]:
+    center = st.session_state["location"]
+map_data = st_folium(m, center=center, use_container_width=True, returned_objects=["last_clicked"], key="map")
+
+# check if map was clicked
+if "Nächster-Standort" in selected:
+    if (
+        map_data["last_clicked"]
+        and map_data["last_clicked"] != st.session_state["last_clicked"]):
+        st.session_state["last_clicked"] = map_data["last_clicked"]
+        st.experimental_rerun()
+
+
 
 st.sidebar.markdown(
     """
