@@ -177,7 +177,57 @@ WHERE
     return query_bigquery_return_gdf(sql_view)
 
 def bigquery_stations_and_bikes():
-    sql = f"""
-SELECT * FROM `seli-data-storage.data_storage_1.city` 
+    sql_view = f"""
+SELECT * FROM `seli-data-storage.data_storage_1.stations_and_bikes` 
 """
-    return query_bigquery_return_df(sql)
+    sql = f"""
+    WITH city_limits AS (
+    SELECT geometry
+    FROM `seli-data-storage.data_storage_1.city`
+),
+filtered_station_information AS (
+    SELECT 
+        station_id, 
+        ARRAY_AGG(name ORDER BY crawl_time LIMIT 1)[OFFSET(0)] AS first_name,
+        ARRAY_AGG(lat ORDER BY crawl_time LIMIT 1)[OFFSET(0)] AS first_lat, 
+        ARRAY_AGG(lon ORDER BY crawl_time LIMIT 1)[OFFSET(0)] AS first_lon
+    FROM `seli-data-storage.data_storage_1.station_information` si
+    JOIN city_limits cl
+    ON ST_WITHIN(ST_GEOGPOINT(si.lon, si.lat), cl.geometry)
+    GROUP BY station_id
+),
+filtered_station_information_excluding_teststation AS (
+    SELECT *
+    FROM filtered_station_information
+    WHERE first_name NOT LIKE '%Teststation%'
+),
+filtered_station_status AS (
+    SELECT 
+        station_id, 
+        num_bikes_available, 
+        EXTRACT(HOUR FROM crawl_time) AS hour_of_day
+    FROM `seli-data-storage.data_storage_1.station_status`
+    WHERE provider_id LIKE '%nextbike%'
+    AND EXTRACT(YEAR FROM crawl_time) = 2023
+),
+aggregated_station_status AS (
+    SELECT 
+        station_id, 
+        hour_of_day, 
+        AVG(num_bikes_available) AS avg_num_bikes_available
+    FROM filtered_station_status
+    GROUP BY station_id, hour_of_day
+)
+
+SELECT 
+    fsi.station_id, 
+    ST_GEOGPOINT(fsi.first_lon, fsi.first_lat) AS geometry,
+    fsi.first_name AS name,
+    ass.hour_of_day, 
+    ROUND(ass.avg_num_bikes_available,2) AS avg_num_bikes_available
+FROM filtered_station_information_excluding_teststation fsi
+JOIN aggregated_station_status ass ON fsi.station_id = ass.station_id
+ORDER BY fsi.station_id, ass.hour_of_day;
+"""
+
+    return query_bigquery_return_gdf(sql_view)

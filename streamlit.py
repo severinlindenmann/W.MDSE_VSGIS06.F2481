@@ -9,6 +9,8 @@ from streamlit_js_eval import get_geolocation
 from folium.features import GeoJsonPopup, GeoJsonTooltip, CustomIcon
 import branca.colormap as cm
 import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
 
 # Set page config
 st.set_page_config(
@@ -97,17 +99,16 @@ def create_feature_collection(data):
 # load data and cache it using streamlit cache function
 @st.cache_data
 def load_data():
-    gdf_city_boundary = sharedmobility("city_boundary") # SMALL - NO VIEW
+    gdf_city_boundary = sharedmobility("city_boundary")  # SMALL - NO VIEW
     gdf_city_boundary = gdf_city_boundary.set_crs(crs=EPSG_GLOBAL)
 
-    gdf_districts_and_stations = sharedmobility("districts_and_stations") # VIEW
+    gdf_districts_and_stations = sharedmobility("districts_and_stations")  # VIEW
     gdf_districts_and_stations = gdf_districts_and_stations.set_crs(crs=EPSG_GLOBAL)
 
-    gdf_rivers = sharedmobility("rivers") # VIEW
+    gdf_rivers = sharedmobility("rivers")  # VIEW
     gdf_rivers = gdf_rivers.set_crs(crs=EPSG_GLOBAL)
 
-
-    gdf_unique_stations = sharedmobility("unique_stations")
+    gdf_unique_stations = sharedmobility("unique_stations")  # VIEW but not optimized
     gdf_unique_stations["geometry"] = [
         Point(lon, lat)
         for lon, lat in zip(gdf_unique_stations["lon"], gdf_unique_stations["lat"])
@@ -115,32 +116,31 @@ def load_data():
     gdf_unique_stations = gpd.GeoDataFrame(gdf_unique_stations, geometry="geometry")
     gdf_unique_stations = gdf_unique_stations.set_crs(crs=EPSG_GLOBAL)
 
-    gdf_stations_and_bikes = sharedmobility("stations_and_bikes")
-    # gdf_stations_and_bikes["geometry"] = [
-    #     Point(lon, lat)
-    #     for lon, lat in zip(gdf_stations_and_bikes["lon"], gdf_stations_and_bikes["lat"])
-    # ]
-    # gdf_stations_and_bikes = gpd.GeoDataFrame(gdf_stations_and_bikes, geometry="geometry")
-    # gdf_stations_and_bikes = gdf_stations_and_bikes.set_crs(crs=EPSG_GLOBAL)
+    gdf_stations_and_bikes = sharedmobility("stations_and_bikes")  # VIEW
+    gdf_stations_and_bikes = gdf_stations_and_bikes.set_crs(crs=EPSG_GLOBAL)
 
     gdf_city_boundary = convert_to_swiss_crs(gdf_city_boundary)
     gdf_unique_stations = convert_to_swiss_crs(gdf_unique_stations)
     gdf_districts_and_stations = convert_to_swiss_crs(gdf_districts_and_stations)
     gdf_rivers = convert_to_swiss_crs(gdf_rivers)
-    # gdf_stations_and_bikes = convert_to_swiss_crs(gdf_stations_and_bikes)
+    gdf_stations_and_bikes = convert_to_swiss_crs(gdf_stations_and_bikes)
 
     return (
         gdf_unique_stations,
         gdf_city_boundary,
         gdf_districts_and_stations,
         gdf_rivers,
-        gdf_stations_and_bikes
+        gdf_stations_and_bikes,
     )
 
 
-gdf_unique_stations, gdf_city_boundary, gdf_districts_and_stations, gdf_rivers, gdf_stations_and_bikes = (
-    load_data()
-)
+(
+    gdf_unique_stations,
+    gdf_city_boundary,
+    gdf_districts_and_stations,
+    gdf_rivers,
+    gdf_stations_and_bikes,
+) = load_data()
 
 
 # create title
@@ -169,11 +169,6 @@ col1, col2, col3, col4, col5 = st.columns(5)
 
 # calculate population
 with col1:
-    # gdf_districts_and_stations["total"] = (
-    #     gdf_districts_and_stations["z0_19"]
-    #     + gdf_districts_and_stations["z20_64"]
-    #     + gdf_districts_and_stations["u65"]
-    # )
     population = int(gdf_districts_and_stations["total"].sum())
     st.metric("Bevölkerung (Stadt Luzern)", population)
 
@@ -595,18 +590,69 @@ if "Bevölkerungsdichte-Stationen" in selected:
 
 if "Verfügbarkeit-Fahrräder" in selected:
     df = gdf_stations_and_bikes.copy()
+    df2 = gdf_districts_and_stations.copy()
 
     st.sidebar.markdown("### Verfügbarkeit-Fahrräder")
     st.sidebar.write(
         "Die Grafik zeigt die Verfügbarkeit der Fahrräder pro Viertel, klicke auf ein Viertel um mehr über die Verfügbarkeit zu sehen"
     )
     # slider for 24h
-    st.sidebar.slider("Zeit", 0, 24, 0, 1)
+    hour_slider = st.sidebar.slider("Zeit", 0, 23, 0, 1)
+
+    df = gpd.sjoin(df2, df, how="inner", predicate="contains")
+    df = df[
+        ["district_name", "hour_of_day", "avg_num_bikes_available", "geometry"]
+    ]
+    # filter by hour
+    df_hour = df[df["hour_of_day"] == hour_slider]
+
+    # create colormap
+    linear = cm.linear.YlGnBu_09.scale(
+        df_hour["avg_num_bikes_available"].min(),
+        df_hour["avg_num_bikes_available"].max(),
+    )
+    m.add_child(linear)
+
+    def style_function(feature):
+        station_count = feature["properties"]["avg_num_bikes_available"]
+        return {
+            "fillColor": linear(station_count),
+            "color": "black",
+            "weight": 0.5,
+            "fillOpacity": 0.7,
+        }
+
+    df_hour = convert_to_global_crs(df_hour)
+    feature_collection = df_hour.__geo_interface__
+    highlight_function = lambda x: {"weight": 3, "color": "black"}
+
+    
+    # Adjust the tooltip to use selected_density for dynamic information display
+    folium.GeoJson(
+        feature_collection,
+        style_function=style_function,
+        highlight_function=highlight_function,
+        tooltip=GeoJsonTooltip(
+            fields=["district_name", "avg_num_bikes_available"],
+            aliases=["District: ", "Avg. Bikes: "],
+            localize=True,
+        ),
+        popup=GeoJsonPopup(
+            fields=["district_name", "avg_num_bikes_available"],
+            aliases=["District: ", "Avg. Bikes: "],
+        ),
+    ).add_to(m)
+
+    st.sidebar.metric(
+        f"Durchschnittliche Verfügbarkeit für {hour_slider} Uhr",
+        round(df_hour["avg_num_bikes_available"].mean(), 2),
+    )
 
 
-    # when i click on a district show me a chart with X axis is time in hour and Y axis is the availability of bikes
-
-
+    hourly_data = df.groupby('hour_of_day')['avg_num_bikes_available'].mean().reset_index()
+    hourly_data['hour_of_day'] = pd.to_numeric(hourly_data['hour_of_day'], errors='coerce')
+    hourly_data.rename(columns={'avg_num_bikes_available': 'Anzahl', "hour_of_day": "Uhrzeit"}, inplace=True)
+    st.sidebar.area_chart(data=hourly_data,x='Uhrzeit',y='Anzahl', use_container_width=True, height=200)
 
 ##### Render Map #####
 center = None
