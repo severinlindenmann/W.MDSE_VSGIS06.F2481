@@ -53,9 +53,7 @@ st.sidebar.markdown(
 #### by Severin Lindenmann, Mai 2024
             """
 )
-st.sidebar.info(
-    "Die Analyse wurde mit öffentlich Zugänglichen Daten durchgeführt. Die Quellen dafür sind unten aufgeführt. Weiter Infos findest du im Github Projekt [Github](https://github.com/severinlindenmann/W.MDSE_VSGIS06.F2481)"
-)
+
 st.sidebar.divider()
 
 # load data and transform
@@ -140,26 +138,39 @@ def load_data():
 
 # create title
 st.title("Nextbike Stationen in Luzern - Karte")
+st.markdown(
+    """### Personalisiere deine Karte
 
+Im **Dropdown-Menü** kannst du die Funktionen auswählen, um die Karte nach deinen Wünschen anzupassen. Die Karte passt sich automatisch an.
+Es ist möglich, **mehrere Funktionen gleichzeitig anzuzeigen**. Beachte jedoch, dass dies die Übersichtlichkeit der Karte beeinträchtigen kann. Weitere Informationen zu den Funktionen findest du in der **rechten Sidebar**.
+Optimale Nutzung der Webseite wird auf einem **Desktop** mit einer **Bildschirmauflösung von mindestens 1920x1080** empfohlen.
+
+
+    """
+)
 # create selection for map
 selected = st.multiselect(
-    "Wähle die Funktionen aus, die du veewnden möchtest aus der Liste aus, um die Karte zu personalisieren:",
+    "Select",
     [
         "Stadtgrenze",
         "Stationen",
         "Station-Umkreis",
         "Nächste-Station",
-        "Viertel",
+        "Quartiere",
         "Fluss",
         "Station-in-Fluss-Nähe",
         "Bevölkerungsdichte",
         "Bevölkerungsdichte-Stationen",
         "Verfügbarkeit-Fahrräder",
     ],
-    default=["Fluss", "Stadtgrenze"],
+    default=["Fluss", "Stadtgrenze","Stationen"],
+    label_visibility="hidden",
 )
 
+st.divider()
+
 # create columns for 4 top metrics
+st.subheader("Allgemeine Kennzahlen zu den Daten")
 col1, col2, col3, col4, col5 = st.columns(5)
 
 # calculate population
@@ -185,7 +196,7 @@ with col4:
 
 # calculate district count
 with col5:
-    st.metric("Anzahl Viertel", gdf_districts_and_stations.shape[0])
+    st.metric("Anzahl Quartiere", gdf_districts_and_stations.shape[0])
 
 ##### Create Map #####
 m = folium.Map(location=[47.05048, 8.30635], zoom_start=st.session_state["zoom"])
@@ -193,18 +204,25 @@ m = folium.Map(location=[47.05048, 8.30635], zoom_start=st.session_state["zoom"]
 # add city boundary to map
 if "Stadtgrenze" in selected:
     df = gdf_city_boundary.copy()
+    length = df["geometry"].length.sum()
     feature_collection = gpd.GeoSeries(
         df.to_crs(crs=EPSG_GLOBAL)["geometry"]
     ).__geo_interface__
     folium.GeoJson(
-        feature_collection, style_function=lambda x: {"color": "grey", "opacity": 0.8}
+        feature_collection, style_function=lambda x: {"color": "darkblue", "opacity": 0.8}
     ).add_to(m)
 
-    # count the length of the city boundary
-    df["length"] = df["geometry"].length
-    city_length = round(df["length"].sum() / 1000, 2)
-    st.sidebar.markdown("### Stadtgrenze")
-    st.sidebar.metric("Stadtumfang (in km)", city_length)
+    city_length = round(length / 1000, 2)
+    st.sidebar.markdown("### Stadtgrenze von Luzern")
+    st.sidebar.metric("Länge der Stadtgrenze (in km)", city_length)
+
+    zurich = 58
+    prozentuale_veränderung = ((zurich - city_length) / city_length) * 100
+
+    st.sidebar.write(
+        f"Die Stadtgrenze von Luzern ist fast so lang wie die Stadtgrenze von Zürich ({zurich} km). Die Stadtgrenze von Luzern ist etwa {round(prozentuale_veränderung, 2)}% kürzer als die Stadtgrenze von Zürich."
+    )
+    st.sidebar.divider()
 
 # add unique stations to map
 if "Stationen" in selected:
@@ -222,10 +240,18 @@ if "Stationen" in selected:
             icon=custom_icon,
         ).add_to(m)
 
+    st.sidebar.write(
+        f"Die Karte zeigt {gdf_unique_stations.shape[0]} alle Nextbike Stationen in der Stadt Luzern"
+    )
+    st.sidebar.divider()
+
 # add unique stations in circles
 if "Station-Umkreis" in selected:
     df = gdf_unique_stations.copy()
     st.sidebar.markdown("### Station-Umkreis")
+    st.sidebar.write(
+        "Mit dem Radius, kannst du die Abdeckung der Stationen in der Stadt Luzern anschauen"
+    )
     slider_value = st.sidebar.slider(
         "Radius in Metern", min_value=100, max_value=500, value=100, step=100
     )
@@ -238,11 +264,15 @@ if "Station-Umkreis" in selected:
     df = df["geometry"].unary_union
 
     total_area = round(df.area / 10**6, 2)
-    st.sidebar.metric(
-        f"Stations-Abdeckung in %", round(total_area / square_kilometers * 100, 2)
-    )
+    st.sidebar.write(f"Stations Abdeckung bei einem Radius von {slider_value} Meter")
+    col1, col2 = st.sidebar.columns(2)
 
-    st.sidebar.divider()
+    col1.metric(f"in %", round(total_area / square_kilometers * 100, 2))
+    col2.metric("in km^2", total_area)
+
+    st.sidebar.write(
+        f"Die Stations-Abdeckung wird mit der Gesamtfläche der Stadt Luzern ({square_kilometers}km^2) verglichen"
+    )
 
     merged_gdf = gpd.GeoDataFrame(geometry=[df])
     merged_gdf.set_crs(crs=EPSG_SWISS, inplace=True)
@@ -256,6 +286,8 @@ if "Station-Umkreis" in selected:
             "dashArray": "5, 5",
         },
     ).add_to(m)
+    st.sidebar.divider()
+
 
 # add nearest stations to map
 if "Nächste-Station" in selected:
@@ -263,9 +295,9 @@ if "Nächste-Station" in selected:
 
     st.sidebar.markdown("### Nächste-Station")
     st.sidebar.write(
-        "Wähle ein Standort auf der Karte oder lasse deinen Standort verwenden"
+        "Wähle ein Standort auf der Karte oder lasse deinen Standort verwenden, um einen Wert auf der Karte zu verwenden, muss du die Funktion Mein Standort verwenden deaktivieren und auf der Karte eine beliebige Stelle klicken"
     )
-    if st.sidebar.checkbox("Mein Standort verwenden"):
+    if st.sidebar.toggle("Mein Standort verwenden"):
         loc = get_geolocation()
         if loc:
             st.session_state["location"] = {
@@ -346,11 +378,12 @@ if "Nächste-Station" in selected:
         ).add_to(m)
 
     st.sidebar.markdown(
-        f"Die nächste Station ist **{df.iloc[0]['name']}**  und {round(df.iloc[0]['distance'], 2)} Meter entfernt"
+        f"Die nächste Station ist **{df.iloc[0]['name']}** und {round(df.iloc[0]['distance'], 2)} Meter entfernt. Die Station wird dir in Grün angezeigt."
     )
+    st.sidebar.divider()
 
 # add districts to map
-if "Viertel" in selected:
+if "Quartiere" in selected:
     df = gdf_districts_and_stations.copy()
     linear = cm.linear.YlGnBu_09.scale(
         df["station_count"].min(), df["station_count"].max()
@@ -371,8 +404,12 @@ if "Viertel" in selected:
 
     highlight_function = lambda x: {"weight": 3, "color": "black"}
 
-    st.sidebar.markdown("### Viertel")
-    st.sidebar.metric("Anzahl Viertel", df.shape[0])
+    st.sidebar.markdown("### Quartiere")
+    st.sidebar.metric("Anzahl Quartiere", df.shape[0])
+
+    st.sidebar.write(
+        f"Es gibt insgesamt {df.shape[0]} Quartiere in der Stadt Luzern, dabei haben gewisse Quartiere mehrere Stationen oder gar keine Stationen. Wenn du mit der Maus über ein Quartier fährst, siehst du die Anzahl der Stationen in diesem Quartier. Zudem ist die Farbe des Quartiers abhängig von der Anzahl der Stationen."
+    )
 
     # Add the GeoJSON to the map with coloring
     folium.GeoJson(
@@ -389,9 +426,29 @@ if "Viertel" in selected:
             aliases=["District: ", "Station Count: "],
         ),
     ).add_to(m)
+    st.sidebar.divider()
 
 # add rivers to map
 if "Fluss" in selected:
+    st.sidebar.write("### Fluss (Reuss)")
+
+    river_length = round(gdf_rivers["length"].sum() / 1000, 2)
+    max_flusslänge = 164
+
+    # Informationen über die Reuss
+    reuss_startpunkt = "Gotthard"
+    reuss_durchquerte_orte = ["Vierwaldstättersee", "Luzern"]
+
+    # Länge der Reuss, die mit dem Kanton Luzern geteilt wird
+    reuss_länge_luzern = round(max_flusslänge * (river_length / max_flusslänge), 2)
+
+    # Prozentuale Anteil der Reuss an der Gesamtlänge
+    reuss_prozent = round(reuss_länge_luzern / max_flusslänge * 100, 2)
+
+    # Ausgabe der Informationen in der Sidebar
+    st.sidebar.markdown(
+        f"Die Reuss entspringt am {reuss_startpunkt} und durchquert den {', '.join(reuss_durchquerte_orte)}. Von ihrer Gesamtlänge von {max_flusslänge} km verläuft {reuss_länge_luzern} km durch den Kanton Luzern. Das entspricht {reuss_prozent}% der Gesamtlänge."
+    )
     df2 = gdf_rivers.copy()
     df2 = convert_to_global_crs(df2)
     folium.GeoJson(
@@ -402,12 +459,16 @@ if "Fluss" in selected:
             "opacity": 0.5,
         },
     ).add_to(m)
+    st.sidebar.divider()
 
 # add stations close to rivers to map
 if "Station-in-Fluss-Nähe" in selected:
     df = gdf_unique_stations.copy()
     df2 = gdf_rivers.copy()
-    st.sidebar.markdown("### Flüsse")
+    st.sidebar.markdown("### Fluss")
+    st.sidebar.write(
+        "Die Grafik zeigt die Stationen in der Nähe von Flüssen. Mit dem Slider kannst du die Entfernung zum Fluss einstellen"
+    )
     slider_value = st.sidebar.slider(
         "Entferung von Fluss in M",
         min_value=50,
@@ -443,15 +504,23 @@ if "Station-in-Fluss-Nähe" in selected:
         f"Anzahl Stationen in der Nähe von Flüssen", close_stations.shape[0]
     )
 
+    st.sidebar.write(
+        f"Die blauen Markierungen zeigen die Stationen in der Nähe von Flüssen. Die Entfernung zum Fluss beträgt maximal {slider_value} Meter."
+    )
     close_stations = convert_to_global_crs(close_stations)
 
     folium.GeoJson(
         close_stations.__geo_interface__,
     ).add_to(m)
+    st.sidebar.divider()
 
 if "Bevölkerungsdichte" in selected:
     df = gdf_districts_and_stations.copy()
     st.sidebar.markdown("### Bevölkerungsdichte")
+
+    st.sidebar.write(
+        "Du kannst die Karte nach verschiedenen Kategorien der Bevölkerungsdichte filtern, zudem kannst du auch direkt auf ein Quartier klicken oder hovern um mehr Informationen zu erhalten"
+    )
 
     selected_density = st.sidebar.selectbox(
         "Bevölkerungsdichte Kategorie",
@@ -523,10 +592,15 @@ if "Bevölkerungsdichte" in selected:
         ),
     ).add_to(m)
 
+    st.sidebar.write(
+        f"Die Karte zeigt die Bevölkerungsdichte in der Stadt Luzern. Die Farbe der Quartiere ist abhängig von der Bevölkerungsdichte in der Kategorie {selected_density}. Im Vergleich zur Gesamtbevölker in der Stadt Luzern, macht die Bevölkerung der Kategorie '{selected_density}' einen Anteil von {round(df[category_map[selected_density]].mean(), 2)}% aus."
+    )
+    st.sidebar.divider()
+
 if "Bevölkerungsdichte-Stationen" in selected:
     st.sidebar.markdown("### Bevölkerungsdichte-Stationen")
     st.sidebar.write(
-        "Die Grafik zeigt die abhängigkeit der Stationen von der Bevölkerungsdichte"
+        "Die Grafik zeigt die Abhängigkeit der Stationen von der Bevölkerungsdichte, klicke auf ein Quartiere um zu sehen wie viele Stationen pro Bewohner zur Verfügung stehen."
     )
 
     df = gdf_districts_and_stations.copy()
@@ -583,16 +657,19 @@ if "Bevölkerungsdichte-Stationen" in selected:
         ),
     ).add_to(m)
 
+    st.sidebar.divider()
+
 if "Verfügbarkeit-Fahrräder" in selected:
     df = gdf_stations_and_bikes.copy()
     df2 = gdf_districts_and_stations.copy()
 
     st.sidebar.markdown("### Verfügbarkeit-Fahrräder")
     st.sidebar.write(
-        "Die Grafik zeigt die Verfügbarkeit der Fahrräder pro Viertel, klicke auf ein Viertel um mehr über die Verfügbarkeit zu sehen"
+        "Die Grafik zeigt die Verfügbarkeit der Fahrräder pro Quartiere, klicke auf ein Quartiere um mehr über die Verfügbarkeit zu sehen, zudem kannst du über den Regler die Uhrzeit auswählen."
     )
+
     # slider for 24h
-    hour_slider = st.sidebar.slider("Zeit", 0, 23, 0, 1)
+    hour_slider = st.sidebar.slider("Uhrzeit", 0, 23, 12, 1)
 
     df = gpd.sjoin(df2, df, how="inner", predicate="contains")
     df = df[["district_name", "hour_of_day", "avg_num_bikes_available", "geometry"]]
@@ -650,9 +727,13 @@ if "Verfügbarkeit-Fahrräder" in selected:
         columns={"avg_num_bikes_available": "Anzahl", "hour_of_day": "Uhrzeit"},
         inplace=True,
     )
+
+    st.sidebar.write('Die Durchschnittliche Verfügbarkeit der Fahrräder pro Uhrzeit ist relativ gleich über den Tag verteilt, was auch Sinn macht, da fast immer gleich viele Fahrzeuge im System sind und wir nur sehen, wenn sie gerade verfügbar sind. In Grafik unten sieht du die Verteilung, in  der Nacht werden natürlich weniger Fahrräder aktiv genutzt. Zudem sieht du das über die Quartiere pro Stunde ein Muster zu erkennen ist.')
     st.sidebar.area_chart(
         data=hourly_data, x="Uhrzeit", y="Anzahl", use_container_width=True, height=200
     )
+
+    st.sidebar.divider()
 
 ##### Render Map #####
 center = None
@@ -675,16 +756,19 @@ if "Nächste-Station" in selected:
     ):
         st.session_state["last_clicked"] = map_data["last_clicked"]
         st.session_state["zoom"] = 16
-        st.experimental_rerun()
+        st.rerun()
 
 if "Nächste-Station" not in selected:
     if st.session_state["zoom"] == 16:
         st.session_state["zoom"] = 15
-        st.experimental_rerun()
+        st.rerun()
 
 
 # add footer
-st.sidebar.divider()
+
+st.sidebar.info(
+    "Die Analyse wurde mit öffentlich Zugänglichen Daten durchgeführt. Die Quellen dafür sind aufgeführt. Weiter Infos findest du im Github Projekt [Github](https://github.com/severinlindenmann/W.MDSE_VSGIS06.F2481)"
+)
 st.sidebar.markdown(
     """
 ### Eingesetzte Tools
