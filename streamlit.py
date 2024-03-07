@@ -9,7 +9,6 @@ from streamlit_js_eval import get_geolocation
 from folium.features import GeoJsonPopup, GeoJsonTooltip, CustomIcon
 import branca.colormap as cm
 import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
 
 # Set page config
@@ -61,12 +60,8 @@ st.sidebar.divider()
 
 # load data and transform
 EPSG_GLOBAL = "EPSG:4326"
-EPSG_SWISS = "EPSG:21781"
-
-# available icons
-# CUSTOM_ICON_RED = CustomIcon("data/images/nextbike_icon_red.png", icon_size=(40, 40))
-# CUSTOM_ICON_BLUE = CustomIcon("data/images/nextbike_icon_blue.png", icon_size=(40, 40))
-# CUSTOM_ICON_GREEN = CustomIcon("data/images/nextbike_icon_green.png", icon_size=(40, 40))
+# EPSG_SWISS = "EPSG:21781" #old swiss crs
+EPSG_SWISS = "EPSG:2056"  # new swiss crs
 
 
 # convert to swiss crs
@@ -600,9 +595,7 @@ if "Verfügbarkeit-Fahrräder" in selected:
     hour_slider = st.sidebar.slider("Zeit", 0, 23, 0, 1)
 
     df = gpd.sjoin(df2, df, how="inner", predicate="contains")
-    df = df[
-        ["district_name", "hour_of_day", "avg_num_bikes_available", "geometry"]
-    ]
+    df = df[["district_name", "hour_of_day", "avg_num_bikes_available", "geometry"]]
     # filter by hour
     df_hour = df[df["hour_of_day"] == hour_slider]
 
@@ -626,7 +619,6 @@ if "Verfügbarkeit-Fahrräder" in selected:
     feature_collection = df_hour.__geo_interface__
     highlight_function = lambda x: {"weight": 3, "color": "black"}
 
-    
     # Adjust the tooltip to use selected_density for dynamic information display
     folium.GeoJson(
         feature_collection,
@@ -648,11 +640,19 @@ if "Verfügbarkeit-Fahrräder" in selected:
         round(df_hour["avg_num_bikes_available"].mean(), 2),
     )
 
-
-    hourly_data = df.groupby('hour_of_day')['avg_num_bikes_available'].mean().reset_index()
-    hourly_data['hour_of_day'] = pd.to_numeric(hourly_data['hour_of_day'], errors='coerce')
-    hourly_data.rename(columns={'avg_num_bikes_available': 'Anzahl', "hour_of_day": "Uhrzeit"}, inplace=True)
-    st.sidebar.area_chart(data=hourly_data,x='Uhrzeit',y='Anzahl', use_container_width=True, height=200)
+    hourly_data = (
+        df.groupby("hour_of_day")["avg_num_bikes_available"].mean().reset_index()
+    )
+    hourly_data["hour_of_day"] = pd.to_numeric(
+        hourly_data["hour_of_day"], errors="coerce"
+    )
+    hourly_data.rename(
+        columns={"avg_num_bikes_available": "Anzahl", "hour_of_day": "Uhrzeit"},
+        inplace=True,
+    )
+    st.sidebar.area_chart(
+        data=hourly_data, x="Uhrzeit", y="Anzahl", use_container_width=True, height=200
+    )
 
 ##### Render Map #####
 center = None

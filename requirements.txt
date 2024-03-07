@@ -9,4 +9,3 @@ shapely==2.0.3
 geopandas==0.14.3
 streamlit-js-eval==0.1.7
 branca==0.7.1
-matplotlib==3.8.3
