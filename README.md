@@ -1,5 +1,9 @@
 # W.MDSE_VSGIS06.F2481: Nextbike Luzern Analytics Tool
 
+## Disclaimer
+
+Before attempting to run this project, it is crucial to have the Shared Mobility data available. This involves crawling the necessary data and subsequently uploading it into Google BigQuery. The application's functionality heavily relies on accessing this dataset from BigQuery. Failure to properly set up the dataset in BigQuery will result in the inability to run this project effectively.
+
 ## Overview
 
 This project is a Streamlit-based web application designed for the visual analysis of Nextbike shared mobility data in Luzern. Developed by Severin Lindenmann for the B.Sc. Mobility, Data Science, and Economics program at Hochschule Luzern, it leverages public data to offer insights into the distribution and accessibility of Nextbike stations across the city. Through interactive maps and metrics, users can explore various geographical features such as station locations, district boundaries, river proximity, and more.
@@ -13,16 +17,12 @@ This project is a Streamlit-based web application designed for the visual analys
 - **Responsive Design:** Optimized for a wide range of devices with an intuitive interface.
 
 ## Folder Structure
-W.MDSE_VSGIS06.F2481/
-│
-├── data/
-│ ├── sharedmobility/ # SQL queries for BigQuery.
-│ └── images/ # Icons and other media assets.
-│
-├── notebook/ # Jupyter notebooks for data preprocessing.
-│
-└── .gcloudignore # For Cloud Run Dockerfile exclusions.
-
+W.MDSE_VSGIS06.F2481/: Root directory of the project.
+data/: Contains all the data used in the project.
+sharedmobility/: SQL queries for BigQuery.
+images/: Icons and other media assets.
+notebook/: Jupyter notebooks for data preprocessing.
+.gcloudignore: Specifies files to be ignored when deploying to Cloud Run.
 
 - **Additional Files:**
   - `jpg` files for use in markdown files located in the top-level folder.
@@ -92,4 +92,4 @@ A live demo of the application can be found at: [nextbike.severin.io](https://ne
 - Data Sources: Nextbike, Shared Mobility APIs, Bevölkerung Luzern, OpenStreetMap
 - Tools: Streamlit, Folium, Google BigQuery
 
-For further assistance or to report bugs, visit [Severin's Help Page](https://severin.io).
+For further assistance or to report bugs, contact me [Severin](https://severin.io).
