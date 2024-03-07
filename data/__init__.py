@@ -32,4 +32,4 @@ def sharedmobility(type="unique_stations", inside_city=False, custom_sql=None):
     elif type=="rivers":
         return bigquery_rivers()
     else:
-        raise ValueError("Invalid type. Please choose from: unique_stations, unique_bikes, city_boundary.")
+        raise ValueError("Invalid type. Please choose the available types.")
