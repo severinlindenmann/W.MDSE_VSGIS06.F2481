@@ -4,8 +4,10 @@ from data.sharedmobility import (
     query_bigquery_return_df,
     bigquery_city_boundary,
     bigquery_districts_and_stations,
-    bigquery_rivers
+    bigquery_rivers,
+    bigquery_stations_and_bikes
 )
+
 
 def sharedmobility(type="unique_stations", inside_city=False, custom_sql=None):
     """
@@ -25,11 +27,13 @@ def sharedmobility(type="unique_stations", inside_city=False, custom_sql=None):
         return bigquery_unique_stations(inside_city=inside_city)
     elif type == "unique_bikes":
         return bigquery_unique_bikes()
-    elif type=="city_boundary":
+    elif type == "city_boundary":
         return bigquery_city_boundary()
-    elif type=="districts_and_stations":
+    elif type == "districts_and_stations":
         return bigquery_districts_and_stations()
-    elif type=="rivers":
+    elif type == "rivers":
         return bigquery_rivers()
+    elif type == 'stations_and_bikes':
+        return bigquery_stations_and_bikes()
     else:
         raise ValueError("Invalid type. Please choose the available types.")

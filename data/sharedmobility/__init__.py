@@ -29,6 +29,11 @@ def query_bigquery_return_gdf(query):
 def bigquery_unique_stations(
     timefilter=datetime.now().strftime("%Y-%m-%d"), inside_city=False
 ):
+    
+    sql_view = f"""
+    SELECT * FROM `seli-data-storage.data_storage_1.unique_stations`
+    """
+
     # Basic SQL query without the ST_CONTAINS clause
     sql = f"""
     SELECT DISTINCT station_id, name, lat, lon
@@ -45,7 +50,7 @@ def bigquery_unique_stations(
                          LIMIT 1), ST_GEOGPOINT(lon, lat))
         """
 
-    return query_bigquery_return_df(sql)
+    return query_bigquery_return_gdf(sql_view)
 
 
 def bigquery_unique_bikes():
@@ -74,6 +79,10 @@ def bigquery_city_boundary():
     return query_bigquery_return_gdf(sql)
 
 def bigquery_districts_and_stations(timefilter=datetime.now().strftime("%Y-%m-%d")):
+    sql_view = f"""
+      SELECT * FROM `seli-data-storage.data_storage_1.districts_and_stations`
+    """
+
     sql = f"""
 WITH DistinctStations AS (
   SELECT
@@ -110,7 +119,15 @@ FinalResults AS (
   SELECT
     dc.district_name,
     dc.station_count,
-    d.geometry
+    d.geometry,
+    d.u65,
+    d.z20_64,
+    d.z0_19,
+    d.diche_per_ha,
+    d.auslaender,
+    d.total,
+    d.quartier_id,
+    d.name
   FROM
     DistrictsWithCounts dc
   JOIN
@@ -120,15 +137,25 @@ FinalResults AS (
 SELECT
   district_name,
   station_count,
-  geometry
+  geometry,
+  u65,
+  z20_64,
+  z0_19,
+  diche_per_ha,
+  auslaender,
+  total,
 FROM
   FinalResults
 
     """
 
-    return query_bigquery_return_gdf(sql)
+    return query_bigquery_return_gdf(sql_view)
 
 def bigquery_rivers():
+    sql_view = f"""
+    SELECT * FROM `seli-data-storage.data_storage_1.rivers_in_city` LIMIT 1000
+    """
+
     sql = f"""
     WITH Canton AS (
   SELECT 
@@ -147,4 +174,10 @@ WHERE
   OR ST_INTERSECTS(ST_ENDPOINT(r.geometry), c.geometry)
 """
 
-    return query_bigquery_return_gdf(sql)
+    return query_bigquery_return_gdf(sql_view)
+
+def bigquery_stations_and_bikes():
+    sql = f"""
+SELECT * FROM `seli-data-storage.data_storage_1.city` 
+"""
+    return query_bigquery_return_df(sql)

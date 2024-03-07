@@ -8,6 +8,7 @@ from shapely.ops import nearest_points
 from streamlit_js_eval import get_geolocation
 from folium.features import GeoJsonPopup, GeoJsonTooltip, CustomIcon
 import branca.colormap as cm
+import numpy as np
 
 # Set page config
 st.set_page_config(
@@ -96,37 +97,48 @@ def create_feature_collection(data):
 # load data and cache it using streamlit cache function
 @st.cache_data
 def load_data():
-    gdf_city_boundary = sharedmobility("city_boundary")
+    gdf_city_boundary = sharedmobility("city_boundary") # SMALL - NO VIEW
     gdf_city_boundary = gdf_city_boundary.set_crs(crs=EPSG_GLOBAL)
 
-    gdf_districts_and_stations = sharedmobility("districts_and_stations")
+    gdf_districts_and_stations = sharedmobility("districts_and_stations") # VIEW
     gdf_districts_and_stations = gdf_districts_and_stations.set_crs(crs=EPSG_GLOBAL)
 
-    gdf_rivers = sharedmobility("rivers")
+    gdf_rivers = sharedmobility("rivers") # VIEW
     gdf_rivers = gdf_rivers.set_crs(crs=EPSG_GLOBAL)
 
-    df_unique_stations = sharedmobility("unique_stations", inside_city=True)
-    df_unique_stations["geometry"] = [
+
+    gdf_unique_stations = sharedmobility("unique_stations")
+    gdf_unique_stations["geometry"] = [
         Point(lon, lat)
-        for lon, lat in zip(df_unique_stations["lon"], df_unique_stations["lat"])
+        for lon, lat in zip(gdf_unique_stations["lon"], gdf_unique_stations["lat"])
     ]
-    gdf_unique_stations = gpd.GeoDataFrame(df_unique_stations, geometry="geometry")
+    gdf_unique_stations = gpd.GeoDataFrame(gdf_unique_stations, geometry="geometry")
     gdf_unique_stations = gdf_unique_stations.set_crs(crs=EPSG_GLOBAL)
+
+    gdf_stations_and_bikes = sharedmobility("stations_and_bikes")
+    # gdf_stations_and_bikes["geometry"] = [
+    #     Point(lon, lat)
+    #     for lon, lat in zip(gdf_stations_and_bikes["lon"], gdf_stations_and_bikes["lat"])
+    # ]
+    # gdf_stations_and_bikes = gpd.GeoDataFrame(gdf_stations_and_bikes, geometry="geometry")
+    # gdf_stations_and_bikes = gdf_stations_and_bikes.set_crs(crs=EPSG_GLOBAL)
 
     gdf_city_boundary = convert_to_swiss_crs(gdf_city_boundary)
     gdf_unique_stations = convert_to_swiss_crs(gdf_unique_stations)
     gdf_districts_and_stations = convert_to_swiss_crs(gdf_districts_and_stations)
     gdf_rivers = convert_to_swiss_crs(gdf_rivers)
+    # gdf_stations_and_bikes = convert_to_swiss_crs(gdf_stations_and_bikes)
 
     return (
         gdf_unique_stations,
         gdf_city_boundary,
         gdf_districts_and_stations,
         gdf_rivers,
+        gdf_stations_and_bikes
     )
 
 
-gdf_unique_stations, gdf_city_boundary, gdf_districts_and_stations, gdf_rivers = (
+gdf_unique_stations, gdf_city_boundary, gdf_districts_and_stations, gdf_rivers, gdf_stations_and_bikes = (
     load_data()
 )
 
@@ -145,16 +157,25 @@ selected = st.multiselect(
         "Viertel",
         "Fluss",
         "Station-in-Fluss-Nähe",
+        "Bevölkerungsdichte",
+        "Bevölkerungsdichte-Stationen",
+        "Verfügbarkeit-Fahrräder",
     ],
     default=["Fluss", "Stadtgrenze"],
 )
 
 # create columns for 4 top metrics
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 
-# count stations
+# calculate population
 with col1:
-    st.metric("Anzahl Stationen", gdf_unique_stations.shape[0])
+    # gdf_districts_and_stations["total"] = (
+    #     gdf_districts_and_stations["z0_19"]
+    #     + gdf_districts_and_stations["z20_64"]
+    #     + gdf_districts_and_stations["u65"]
+    # )
+    population = int(gdf_districts_and_stations["total"].sum())
+    st.metric("Bevölkerung (Stadt Luzern)", population)
 
 # calculate city size
 with col2:
@@ -168,8 +189,12 @@ with col3:
     river_length = round(gdf_rivers["length"].sum() / 1000, 2)
     st.metric("Flusslänge (in km) (Kt. LU)", river_length)
 
-# calculate district count
+# count stations
 with col4:
+    st.metric("Anzahl Stationen", gdf_unique_stations.shape[0])
+
+# calculate district count
+with col5:
     st.metric("Anzahl Viertel", gdf_districts_and_stations.shape[0])
 
 ##### Create Map #####
@@ -177,16 +202,17 @@ m = folium.Map(location=[47.05048, 8.30635], zoom_start=st.session_state["zoom"]
 
 # add city boundary to map
 if "Stadtgrenze" in selected:
+    df = gdf_city_boundary.copy()
     feature_collection = gpd.GeoSeries(
-        gdf_city_boundary.to_crs(crs=EPSG_GLOBAL)["geometry"]
+        df.to_crs(crs=EPSG_GLOBAL)["geometry"]
     ).__geo_interface__
     folium.GeoJson(
         feature_collection, style_function=lambda x: {"color": "grey", "opacity": 0.8}
     ).add_to(m)
 
     # count the length of the city boundary
-    gdf_city_boundary["length"] = gdf_city_boundary["geometry"].length
-    city_length = round(gdf_city_boundary["length"].sum() / 1000, 2)
+    df["length"] = df["geometry"].length
+    city_length = round(df["length"].sum() / 1000, 2)
     st.sidebar.markdown("### Stadtgrenze")
     st.sidebar.metric("Stadtumfang (in km)", city_length)
 
@@ -219,15 +245,16 @@ if "Station-Umkreis" in selected:
     # check that circle is within city boundary, else clip it to boundary
     df["geometry"] = df.intersection(gdf_city_boundary.geometry.iloc[0])
 
-    merged_geometry = df["geometry"].unary_union
-    total_area = round(merged_geometry.area / 10**6, 2)
+    df = df["geometry"].unary_union
+
+    total_area = round(df.area / 10**6, 2)
     st.sidebar.metric(
         f"Stations-Abdeckung in %", round(total_area / square_kilometers * 100, 2)
     )
 
     st.sidebar.divider()
 
-    merged_gdf = gpd.GeoDataFrame(geometry=[merged_geometry])
+    merged_gdf = gpd.GeoDataFrame(geometry=[df])
     merged_gdf.set_crs(crs=EPSG_SWISS, inplace=True)
     merged_geojson = convert_to_global_crs(merged_gdf).__geo_interface__
     folium.GeoJson(
@@ -432,6 +459,154 @@ if "Station-in-Fluss-Nähe" in selected:
         close_stations.__geo_interface__,
     ).add_to(m)
 
+if "Bevölkerungsdichte" in selected:
+    df = gdf_districts_and_stations.copy()
+    st.sidebar.markdown("### Bevölkerungsdichte")
+
+    selected_density = st.sidebar.selectbox(
+        "Bevölkerungsdichte Kategorie",
+        ["Gesamt", "0-19", "20-64", "65+", "Ausländer", "Dichte pro ha"],
+    )
+    category_map = {
+        "Gesamt": "total",
+        "0-19": "z0_19",
+        "20-64": "z20_64",
+        "65+": "u65",
+        "Ausländer": "auslaender",
+        "Bevölkerungsdichte": "diche_per_ha",
+    }
+
+    category_map_desc = {
+        "Gesamt": "%",
+        "0-19": "%",
+        "20-64": "%",
+        "65+": "%",
+        "Ausländer": "%",
+        "Bevölkerungsdichte": "Pers./ha",
+    }
+
+    # create colormap
+    linear = cm.linear.YlGnBu_09.scale(
+        df[category_map[selected_density]].min(),
+        df[category_map[selected_density]].max(),
+    )
+    m.add_child(linear)
+
+    def style_function(feature):
+        # Use the selected_density for styling
+        station_count = feature["properties"][category_map[selected_density]]
+        return {
+            "fillColor": linear(station_count),
+            "color": "black",
+            "weight": 0.5,
+            "fillOpacity": 0.7,
+        }
+
+    df = convert_to_global_crs(
+        df
+    )  # Assuming this function is defined elsewhere to convert the CRS
+    feature_collection = df.__geo_interface__
+
+    highlight_function = lambda x: {"weight": 3, "color": "black"}
+
+    # Adjust the tooltip to use selected_density for dynamic information display
+    folium.GeoJson(
+        feature_collection,
+        style_function=style_function,
+        highlight_function=highlight_function,
+        tooltip=GeoJsonTooltip(
+            fields=["district_name"] + list(category_map.values()),
+            aliases=["District: "]
+            + [
+                f"{key} ({category_map_desc.get(key, '')}): "
+                for key in category_map.keys()
+            ],
+            localize=True,
+        ),
+        popup=GeoJsonPopup(
+            fields=["district_name"] + list(category_map.values()),
+            aliases=["District: "]
+            + [
+                f"{key} ({category_map_desc.get(key, '')}): "
+                for key in category_map.keys()
+            ],
+        ),
+    ).add_to(m)
+
+if "Bevölkerungsdichte-Stationen" in selected:
+    st.sidebar.markdown("### Bevölkerungsdichte-Stationen")
+    st.sidebar.write(
+        "Die Grafik zeigt die abhängigkeit der Stationen von der Bevölkerungsdichte"
+    )
+
+    df = gdf_districts_and_stations.copy()
+    df = convert_to_global_crs(df)
+
+    df["station_per_total"] = np.where(
+        df["station_count"] == 0, 0, df["total"] / df["station_count"]
+    )
+
+    # create colormap
+    linear = cm.linear.YlGnBu_09.scale(
+        df["station_per_total"].min(),
+        df["station_per_total"].max(),
+    )
+    st.sidebar.metric(
+        "Durchschnittliche Bewohner pro Station",
+        round(df["station_per_total"].mean(), 2),
+    )
+
+    m.add_child(linear)
+
+    def style_function(feature):
+        station_count = feature["properties"]["station_per_total"]
+        if station_count == 0:
+            return {
+                "fillColor": "black",
+                "color": "black",
+                "weight": 0.5,
+                "fillOpacity": 0.7,
+            }
+        return {
+            "fillColor": linear(station_count),
+            "color": "black",
+            "weight": 0.5,
+            "fillOpacity": 0.7,
+        }
+
+    feature_collection = df.__geo_interface__
+    highlight_function = lambda x: {"weight": 3, "color": "black"}
+
+    # Adjust the tooltip to use selected_density for dynamic information display
+    folium.GeoJson(
+        feature_collection,
+        style_function=style_function,
+        highlight_function=highlight_function,
+        tooltip=GeoJsonTooltip(
+            fields=["district_name", "station_per_total"],
+            aliases=["District: ", "Station per total: "],
+            localize=True,
+        ),
+        popup=GeoJsonPopup(
+            fields=["district_name", "station_per_total"],
+            aliases=["District: ", "Station per total: "],
+        ),
+    ).add_to(m)
+
+if "Verfügbarkeit-Fahrräder" in selected:
+    df = gdf_stations_and_bikes.copy()
+
+    st.sidebar.markdown("### Verfügbarkeit-Fahrräder")
+    st.sidebar.write(
+        "Die Grafik zeigt die Verfügbarkeit der Fahrräder pro Viertel, klicke auf ein Viertel um mehr über die Verfügbarkeit zu sehen"
+    )
+    # slider for 24h
+    st.sidebar.slider("Zeit", 0, 24, 0, 1)
+
+
+    # when i click on a district show me a chart with X axis is time in hour and Y axis is the availability of bikes
+
+
 
 ##### Render Map #####
 center = None
@@ -472,9 +647,8 @@ st.sidebar.markdown(
 - [Google BigQuery](https://cloud.google.com/bigquery)
 
 ### Quellen
-- [Nextbike](https://www.nextbike.de/)
-- [Shared Mobility](https://github.com/SFOE/sharedmobility)
-- [Bevölkerung Luzern](https://www.lustat.ch/)
+- [Shared Mobility (Stand 2023)](https://github.com/SFOE/sharedmobility)
+- [Bevölkerung Luzern (Stand 2022)](https://www.lustat.ch/)
 - [Openstreetmap](https://www.openstreetmap.org/)
 """
 )

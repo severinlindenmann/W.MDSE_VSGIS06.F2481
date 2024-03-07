@@ -2,7 +2,7 @@
 
 ## Disclaimer
 
-Before attempting to run this project, it is crucial to have the Shared Mobility data available. This involves crawling the necessary data and subsequently uploading it into Google BigQuery. The application's functionality heavily relies on accessing this dataset from BigQuery. Failure to properly set up the dataset in BigQuery will result in the inability to run this project effectively.
+Before attempting to run this project, it is crucial to have the Shared Mobility data available. This involves crawling the necessary data and subsequently uploading it into Google BigQuery. The application's functionality heavily relies on accessing this dataset from BigQuery. Failure to properly set up the dataset in BigQuery will result in the inability to run this project effectively. There is no guide for this steps. 
 
 ## Overview
 
@@ -17,12 +17,11 @@ This project is a Streamlit-based web application designed for the visual analys
 - **Responsive Design:** Optimized for a wide range of devices with an intuitive interface.
 
 ## Folder Structure
-W.MDSE_VSGIS06.F2481/: Root directory of the project.
-data/: Contains all the data used in the project.
-sharedmobility/: SQL queries for BigQuery.
-images/: Icons and other media assets.
-notebook/: Jupyter notebooks for data preprocessing.
-.gcloudignore: Specifies files to be ignored when deploying to Cloud Run.
+- W.MDSE_VSGIS06.F2481/: Root directory of the project.
+  - data/sharedmobility/: SQL queries for BigQuery.
+  - images/: Icons and other media assets.
+  - notebook/: Jupyter notebooks for data preprocessing.
+  - .gcloudignore: Specifies files to be ignored when deploying to Cloud Run.
 
 - **Additional Files:**
   - `jpg` files for use in markdown files located in the top-level folder.
