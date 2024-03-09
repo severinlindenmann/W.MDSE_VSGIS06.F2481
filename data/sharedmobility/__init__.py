@@ -151,13 +151,13 @@ FROM
 
     return query_bigquery_return_gdf(sql_view)
 
-def bigquery_rivers():
+def bigquery_lakes_and_rivers():
     sql_view = f"""
-    SELECT * FROM `seli-data-storage.data_storage_1.rivers_in_city` LIMIT 1000
+    SELECT * FROM `seli-data-storage.data_storage_1.lakes_and_rivers`
     """
 
     sql = f"""
-    WITH Canton AS (
+WITH Canton AS (
   SELECT 
     geometry 
   FROM 
@@ -165,13 +165,28 @@ def bigquery_rivers():
 )
 
 SELECT
-  r.*
+  'river' as type, -- Differentiates rivers from lakes
+  r.GROSSERFLU, -- NAME OF RIVER
+  r.geometry
 FROM
   `seli-data-storage.data_storage_1.geo_rivers` r,
   Canton c
 WHERE
   ST_INTERSECTS(ST_STARTPOINT(r.geometry), c.geometry)
   OR ST_INTERSECTS(ST_ENDPOINT(r.geometry), c.geometry)
+
+UNION ALL
+
+SELECT
+  'lake' as type, -- Differentiates lakes from rivers
+  l.ID1, -- NAME OF LAKE
+  l.geometry
+FROM
+  `seli-data-storage.data_storage_1.lakes` l,
+  Canton c
+WHERE
+  ST_INTERSECTS(l.geometry, c.geometry)
+
 """
 
     return query_bigquery_return_gdf(sql_view)
@@ -231,3 +246,9 @@ ORDER BY fsi.station_id, ass.hour_of_day;
 """
 
     return query_bigquery_return_gdf(sql_view)
+
+def bigquery_canton_boundary():
+  sql = """ 
+  SELECT * FROM `seli-data-storage.data_storage_1.canton`
+"""
+  return query_bigquery_return_gdf(sql) 

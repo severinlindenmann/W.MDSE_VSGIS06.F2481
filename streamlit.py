@@ -42,8 +42,8 @@ if "location" not in st.session_state:
 if "last_clicked" not in st.session_state:
     st.session_state["last_clicked"] = None
 
-if "zoom" not in st.session_state:
-    st.session_state["zoom"] = 15
+# if "zoom" not in st.session_state:
+#     st.session_state["zoom"] = 15
 
 # create description
 st.sidebar.markdown(
@@ -98,8 +98,8 @@ def load_data():
     gdf_districts_and_stations = sharedmobility("districts_and_stations")  # VIEW
     gdf_districts_and_stations = gdf_districts_and_stations.set_crs(crs=EPSG_GLOBAL)
 
-    gdf_rivers = sharedmobility("rivers")  # VIEW
-    gdf_rivers = gdf_rivers.set_crs(crs=EPSG_GLOBAL)
+    gdf_lakes_and_rivers = sharedmobility("lakes_and_rivers")  # VIEW
+    gdf_lakes_and_rivers = gdf_lakes_and_rivers.set_crs(crs=EPSG_GLOBAL)
 
     gdf_unique_stations = sharedmobility("unique_stations")  # VIEW but not optimized
     gdf_unique_stations["geometry"] = [
@@ -109,21 +109,26 @@ def load_data():
     gdf_unique_stations = gpd.GeoDataFrame(gdf_unique_stations, geometry="geometry")
     gdf_unique_stations = gdf_unique_stations.set_crs(crs=EPSG_GLOBAL)
 
+    gdf_canton_boundary = sharedmobility("canton_boundary")  # SMALL - NO VIEW
+    gdf_canton_boundary = gdf_canton_boundary.set_crs(crs=EPSG_GLOBAL)
+
     gdf_stations_and_bikes = sharedmobility("stations_and_bikes")  # VIEW
     gdf_stations_and_bikes = gdf_stations_and_bikes.set_crs(crs=EPSG_GLOBAL)
 
     gdf_city_boundary = convert_to_swiss_crs(gdf_city_boundary)
     gdf_unique_stations = convert_to_swiss_crs(gdf_unique_stations)
+    gdf_canton_boundary = convert_to_swiss_crs(gdf_canton_boundary)
     gdf_districts_and_stations = convert_to_swiss_crs(gdf_districts_and_stations)
-    gdf_rivers = convert_to_swiss_crs(gdf_rivers)
+    gdf_lakes_and_rivers = convert_to_swiss_crs(gdf_lakes_and_rivers)
     gdf_stations_and_bikes = convert_to_swiss_crs(gdf_stations_and_bikes)
 
     return (
         gdf_unique_stations,
         gdf_city_boundary,
         gdf_districts_and_stations,
-        gdf_rivers,
+        gdf_lakes_and_rivers,
         gdf_stations_and_bikes,
+        gdf_canton_boundary,
     )
 
 
@@ -131,8 +136,9 @@ def load_data():
     gdf_unique_stations,
     gdf_city_boundary,
     gdf_districts_and_stations,
-    gdf_rivers,
+    gdf_lakes_and_rivers,
     gdf_stations_and_bikes,
+    gdf_canton_boundary,
 ) = load_data()
 
 
@@ -152,18 +158,19 @@ Optimale Nutzung der Webseite wird auf einem **Desktop** mit einer **Bildschirma
 selected = st.multiselect(
     "Select",
     [
+        "Kantonsgrenze",
         "Stadtgrenze",
         "Stationen",
         "Station-Umkreis",
         "Nächste-Station",
         "Quartiere",
-        "Fluss",
-        "Station-in-Fluss-Nähe",
+        "Gewässer",
+        "Station-in-Gewässer-Nähe",
         "Bevölkerungsdichte",
         "Bevölkerungsdichte-Stationen",
         "Verfügbarkeit-Fahrräder",
     ],
-    default=["Fluss", "Stadtgrenze","Stationen"],
+    default=["Gewässer", "Stadtgrenze", "Kantonsgrenze", "Stationen"],
     label_visibility="hidden",
 )
 
@@ -186,8 +193,9 @@ with col2:
 
 # calculate river length
 with col3:
-    gdf_rivers["length"] = gdf_rivers["geometry"].length
-    river_length = round(gdf_rivers["length"].sum() / 1000, 2)
+    df = gdf_lakes_and_rivers[gdf_lakes_and_rivers["type"] == "river"].copy()
+    df["length"] = df["geometry"].length
+    river_length = round(df["length"].sum() / 1000, 2)
     st.metric("Flusslänge (in km) (Kt. LU)", river_length)
 
 # count stations
@@ -199,7 +207,7 @@ with col5:
     st.metric("Anzahl Quartiere", gdf_districts_and_stations.shape[0])
 
 ##### Create Map #####
-m = folium.Map(location=[47.05048, 8.30635], zoom_start=st.session_state["zoom"])
+m = folium.Map(location=[47.05048, 8.30635], zoom_start=14)
 
 # add city boundary to map
 if "Stadtgrenze" in selected:
@@ -209,7 +217,8 @@ if "Stadtgrenze" in selected:
         df.to_crs(crs=EPSG_GLOBAL)["geometry"]
     ).__geo_interface__
     folium.GeoJson(
-        feature_collection, style_function=lambda x: {"color": "darkblue", "opacity": 0.8}
+        feature_collection,
+        style_function=lambda x: {"color": "darkblue", "opacity": 0.8},
     ).add_to(m)
 
     city_length = round(length / 1000, 2)
@@ -221,6 +230,22 @@ if "Stadtgrenze" in selected:
 
     st.sidebar.write(
         f"Die Stadtgrenze von Luzern ist fast so lang wie die Stadtgrenze von Zürich ({zurich} km). Die Stadtgrenze von Luzern ist etwa {round(prozentuale_veränderung, 2)}% kürzer als die Stadtgrenze von Zürich."
+    )
+    st.sidebar.divider()
+
+if "Kantonsgrenze" in selected:
+    df = gdf_canton_boundary.copy()
+    feature_collection = gpd.GeoSeries(
+        df.to_crs(crs=EPSG_GLOBAL)["geometry"]
+    ).__geo_interface__
+    folium.GeoJson(
+        feature_collection,
+        style_function=lambda x: {"color": "darkgreen", "opacity": 0.3},
+    ).add_to(m)
+
+    st.sidebar.markdown("### Kantonsgrenze von Luzern")
+    st.sidebar.write(
+        "Die Karte zeigt die Kantonsgrenze von Luzern. Der Kanton Luzern ist ein Kanton in der Zentralschweiz und hat eine Fläche von 1493 km^2."
     )
     st.sidebar.divider()
 
@@ -428,11 +453,18 @@ if "Quartiere" in selected:
     ).add_to(m)
     st.sidebar.divider()
 
-# add rivers to map
-if "Fluss" in selected:
-    st.sidebar.write("### Fluss (Reuss)")
+# add lakes and rivers to map
+if "Gewässer" in selected:
+    df_rivers = gdf_lakes_and_rivers[gdf_lakes_and_rivers["type"] == "river"].copy()
+    df_canton = gdf_canton_boundary.copy()
+    df = gdf_lakes_and_rivers.copy()
+    df = gpd.clip(df, df_canton.geometry)
 
-    river_length = round(gdf_rivers["length"].sum() / 1000, 2)
+    st.sidebar.write("### Gewässer (Reuss und Vierwaldstättersee)")
+
+    df_rivers["length"] = df_rivers["geometry"].length
+    river_length = round(df_rivers["length"].sum() / 1000, 2)
+
     max_flusslänge = 164
 
     # Informationen über die Reuss
@@ -446,31 +478,46 @@ if "Fluss" in selected:
     reuss_prozent = round(reuss_länge_luzern / max_flusslänge * 100, 2)
 
     # Ausgabe der Informationen in der Sidebar
+    seen = gdf_lakes_and_rivers["GROSSERFLU"].unique().tolist()
+    st.sidebar.markdown(
+        "Der Kanton Luzern grenzt an die Seen und Flüsse: {}".format(", ".join(seen))
+    )
     st.sidebar.markdown(
         f"Die Reuss entspringt am {reuss_startpunkt} und durchquert den {', '.join(reuss_durchquerte_orte)}. Von ihrer Gesamtlänge von {max_flusslänge} km verläuft {reuss_länge_luzern} km durch den Kanton Luzern. Das entspricht {reuss_prozent}% der Gesamtlänge."
     )
-    df2 = gdf_rivers.copy()
-    df2 = convert_to_global_crs(df2)
+
+    st.sidebar.markdown(
+        "Es wird jeweils nur der Teil vom Gewässer angezeigt, der sich im Kanton Luzern befindet."
+    )
+
+    df = convert_to_global_crs(df)
     folium.GeoJson(
-        df2.__geo_interface__,
+        df.__geo_interface__,
         style_function=lambda feature: {
             "color": "blue",
             "weight": 8,
-            "opacity": 0.5,
+            "opacity": 0.4,
         },
+        tooltip=folium.GeoJsonTooltip(
+            fields=["GROSSERFLU"],
+            aliases=[
+                "Name:"
+            ],  # This is what will be shown in the tooltip. Adjust the alias as necessary.
+            localize=True,
+        ),
     ).add_to(m)
     st.sidebar.divider()
 
 # add stations close to rivers to map
-if "Station-in-Fluss-Nähe" in selected:
+if "Station-in-Gewässer-Nähe" in selected:
     df = gdf_unique_stations.copy()
-    df2 = gdf_rivers.copy()
-    st.sidebar.markdown("### Fluss")
+    df2 = gdf_lakes_and_rivers.copy()
+    st.sidebar.markdown("### Gewässer")
     st.sidebar.write(
-        "Die Grafik zeigt die Stationen in der Nähe von Flüssen. Mit dem Slider kannst du die Entfernung zum Fluss einstellen"
+        "Die Grafik zeigt die Stationen in der Nähe von Gewässern. Mit dem Slider kannst du die Entfernung dazu einstellen"
     )
     slider_value = st.sidebar.slider(
-        "Entferung von Fluss in M",
+        "Entferung von Gewässer in M",
         min_value=50,
         max_value=250,
         value=50,
@@ -478,34 +525,34 @@ if "Station-in-Fluss-Nähe" in selected:
         key="slider_fluesse",
     )
 
-    def stations_close_to_river(stations, rivers, max_distance):
+    def stations_close_to_water(stations, rivers_and_lakes, max_distance):
         close_stations = []
 
         for station in stations.geometry:
-            # Calculate the nearest point on any river line to the current station
+            # Calculate the nearest point on any river or lake to the current station
             nearest_points_list = [
-                nearest_points(station, river)[1] for river in rivers.geometry
+                nearest_points(station, water)[1] for water in rivers_and_lakes.geometry
             ]
 
-            # Calculate the distance from the station to each nearest point on the rivers
+            # Calculate the distance from the station to each nearest point on the rivers and lakes
             distances = [station.distance(point) for point in nearest_points_list]
 
-            # Check if any of these distances are within the max_distance (slider_value)
+            # Check if any of these distances are within the max_distance
             if min(distances) <= max_distance:
                 close_stations.append(station)
 
-        # Return a new GeoDataFrame containing only the stations close to a river
-        return gpd.GeoDataFrame(geometry=close_stations, crs=EPSG_SWISS)
+        # Return a new GeoDataFrame containing only the stations close to a river or lake
+        return gpd.GeoDataFrame(geometry=close_stations, crs=rivers_and_lakes.crs)
 
     # Filter stations close to rivers
-    close_stations = stations_close_to_river(df, df2, slider_value)
+    close_stations = stations_close_to_water(df, df2, slider_value)
 
     st.sidebar.metric(
-        f"Anzahl Stationen in der Nähe von Flüssen", close_stations.shape[0]
+        f"Anzahl Stationen in der Nähe von Wasser", close_stations.shape[0]
     )
 
     st.sidebar.write(
-        f"Die blauen Markierungen zeigen die Stationen in der Nähe von Flüssen. Die Entfernung zum Fluss beträgt maximal {slider_value} Meter."
+        f"Die blauen Markierungen zeigen die Stationen in der Nähe von Wasser. Die Entfernung zum Wasser beträgt maximal {slider_value} Meter."
     )
     close_stations = convert_to_global_crs(close_stations)
 
@@ -624,13 +671,13 @@ if "Bevölkerungsdichte-Stationen" in selected:
 
     def style_function(feature):
         station_count = feature["properties"]["station_per_total"]
-        if station_count == 0:
-            return {
-                "fillColor": "black",
-                "color": "black",
-                "weight": 0.5,
-                "fillOpacity": 0.7,
-            }
+        # if station_count == 0:
+        #     return {
+        #         "fillColor": "black",
+        #         "color": "black",
+        #         "weight": 0.5,
+        #         "fillOpacity": 0.7,
+        #     }
         return {
             "fillColor": linear(station_count),
             "color": "black",
@@ -672,7 +719,20 @@ if "Verfügbarkeit-Fahrräder" in selected:
     hour_slider = st.sidebar.slider("Uhrzeit", 0, 23, 12, 1)
 
     df = gpd.sjoin(df2, df, how="inner", predicate="contains")
+
+    # Find missing districts
+    missing_districts = df2[~df2["district_name"].isin(df["district_name"])].copy()
+    missing_districts = pd.concat(
+        [missing_districts.assign(hour_of_day=hour) for hour in range(24)],
+        ignore_index=True,
+    )
+
+    df = pd.concat([df, missing_districts], ignore_index=True).reset_index(drop=True)
+    df.fillna(0, inplace=True)
+    df = gpd.GeoDataFrame(df, geometry="geometry")
+
     df = df[["district_name", "hour_of_day", "avg_num_bikes_available", "geometry"]]
+
     # filter by hour
     df_hour = df[df["hour_of_day"] == hour_slider]
 
@@ -728,7 +788,9 @@ if "Verfügbarkeit-Fahrräder" in selected:
         inplace=True,
     )
 
-    st.sidebar.write('Die Durchschnittliche Verfügbarkeit der Fahrräder pro Uhrzeit ist relativ gleich über den Tag verteilt, was auch Sinn macht, da fast immer gleich viele Fahrzeuge im System sind und wir nur sehen, wenn sie gerade verfügbar sind. In Grafik unten sieht du die Verteilung, in  der Nacht werden natürlich weniger Fahrräder aktiv genutzt. Zudem sieht du das über die Quartiere pro Stunde ein Muster zu erkennen ist.')
+    st.sidebar.write(
+        "Die Durchschnittliche Verfügbarkeit der Fahrräder pro Uhrzeit ist relativ gleich über den Tag verteilt, was auch Sinn macht, da fast immer gleich viele Fahrzeuge im System sind und wir nur sehen, wenn sie gerade verfügbar sind. In Grafik unten sieht du die Verteilung, in  der Nacht werden natürlich weniger Fahrräder aktiv genutzt. Zudem sieht du das über die Quartiere pro Stunde ein Muster zu erkennen ist."
+    )
     st.sidebar.area_chart(
         data=hourly_data, x="Uhrzeit", y="Anzahl", use_container_width=True, height=200
     )
@@ -758,10 +820,10 @@ if "Nächste-Station" in selected:
         st.session_state["zoom"] = 16
         st.rerun()
 
-if "Nächste-Station" not in selected:
-    if st.session_state["zoom"] == 16:
-        st.session_state["zoom"] = 15
-        st.rerun()
+# if "Nächste-Station" not in selected:
+#     if st.session_state["zoom"] == 16:
+#         st.session_state["zoom"] = 15
+#         st.rerun()
 
 
 # add footer
